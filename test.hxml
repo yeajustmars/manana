@@ -1,0 +1,9 @@
+# Classpaths
+-cp src
+-cp test
+
+# Main entry point class
+-main manana.RunTests
+
+# Target execution mode (e.g. run directly using Haxe interpreter)
+--interp

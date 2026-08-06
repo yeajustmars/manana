@@ -1,0 +1,87 @@
+"""
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+This is the Manana template language. Manana is a whitespace-semantic
+language for HTML & XML that implements "Views", allowing the user to break up
+their markup into a tree of first-class objects.
+
+A few rules about Manana:
+
+1. Every View converts to, and acts as, a pure function (no side effects)
+2. Since every view is a function, a View can accept input arguments
+3. Indentation delimits blocks and auto-generates closing tags
+4. The "@" symbol denotes a "directive" to the Manana engine
+5. The ">" symbol acts as an "inline indentation", allowing tags to be chained
+   in a single line of code.
+6. Attributes follow the pattern: `(k=v k=v ...)` and can span multiple lines
+7. Inside an "attribute map", whitespace means nothing and values that don't
+   have spaces can be left unquoted.
+7. "a" tags have a special syntax using the "/[...]" for syntactic sugar
+   instead of having to type '(href="/some-url")'
+8. At any point in Manana code, you can create block comments with the
+   triple-double-quotes syntax that surrounds this very text.
+9. Any line that starts with a letter, and matches an HTML5 tag, will be
+   treated as one
+10. Code blocks are declared using "```...```"
+11. Code blocks calculate starting indentation based on the number of
+    whitespace tokens before the first character in the first line. All code
+    after that uses that as zero-indent, as if it were pushed all the way
+    up against the left side of the file with zero spaces.
+12. Manana implements "parse modes" that tell the parser which mode it is in.
+13. "parse modes" include:
+    - "std" for standard mode
+    - "attr" for inside attribute maps
+    - "code" for code blocks
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+"""
+
+@manana 0.1
+
+@view _main
+div#page.container.width-full
+  @left-nav
+  @page-content
+  @sidebar
+  @other-view-1 ^:manana/allow-missing
+  @other-view-2 ^:manana/allow-missing
+    @other-view-3
+  @other-view-4 ^:manana/allow-missing
+    @other-view-5
+
+@view left-nav
+ul
+  li > a /                Home
+  li > a /about           About Us
+  li > a (/contact)       Contact
+  li > a (
+    href = "/syntax"
+  ) This is valid in Manana
+
+@view page-content
+div#content.conttainer.h-full
+  h1 Welcome to Manana!
+
+  p.row
+    h2 Very nested syntax:
+    ul#some-id.a.b.c > li(*x 1) > a /link Link Text
+
+  p.row
+    h2 Variable interpolation
+    P.p-2
+      Here's some text in the Manana template language
+      that includes {user.first-name} {user.last-name}
+      and here's how you literally print those braces:
+      \{user.first-name} \{user.last-name}.
+
+  p.row
+    h2 Some code that converts to <pre><code>...</code></pre>
+
+    ```
+    if (x === undefined) {
+      console.log("x is undefined");
+    }
+    ```
+
+@view sidebar
+  li > a /link1 Link 1
+  li > a /link2 Link 2
+  li > a /link3 Link 3
