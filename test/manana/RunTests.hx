@@ -10,6 +10,9 @@ class RunTests {
         var lexerTests = new TestLexer();
         lexerTests.runAll();
 
+        var parserTests = new TestParser();
+        parserTests.runAll();
+
         Sys.println('\nResults: ${Assert.passedCount} passed, ${Assert.failedCount} failed.');
 
         if (Assert.failedCount > 0) {

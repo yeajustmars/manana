@@ -170,19 +170,17 @@ class Lexer {
 
             // Tag vs Plain Text determination
             if (isAlpha(ch)) {
-                var pos = currentPos();
                 var word = peekWord();
                 if (HTML_TAGS.exists(word.toLowerCase())) {
+                    var pos = currentPos();
                     advanceBy(word.length);
                     tokens.push(new Token(TIdentifier(word), pos));
-                } else {
-                    tokens.push(lexRestOfLineAsText());
+                    continue;
                 }
-                continue;
             }
 
-            // Fallback: raw line content
-            tokens.push(lexRestOfLineAsText());
+            // Fallback: raw text until special token delimiter
+            tokens.push(lexTextUntilSpecial());
         }
 
         // Emit final dedents at EOF
@@ -281,7 +279,6 @@ class Lexer {
 
     function lexMetadata():Token {
         var pos = currentPos();
-        advance(); // skip ^
         var buf = new StringBuf();
         while (!isEof() && !isWhitespace(peekChar()) && peekChar() != "\n") {
             buf.add(peekChar());
@@ -360,6 +357,18 @@ class Lexer {
         return new Token(TText(StringTools.trim(buf.toString())), pos);
     }
 
+    function lexTextUntilSpecial():Token {
+        var pos = currentPos();
+        var buf = new StringBuf();
+        while (!isEof()) {
+            var c = peekChar();
+            if (c == "\n" || c == "\r" || c == "{" || c == "^" || c == "@") break;
+            buf.add(c);
+            advance();
+        }
+        return new Token(TText(StringTools.trim(buf.toString())), pos);
+    }
+
     function readIdentifierName():String {
         var buf = new StringBuf();
         while (!isEof() && (isAlphaNum(peekChar()) || peekChar() == "-" || peekChar() == "_")) {
@@ -398,6 +407,15 @@ class Lexer {
     inline function isWhitespace(c:String):Bool return c == " " || c == "\t" || c == "\n" || c == "\r";
     inline function isAlpha(c:String):Bool return (c >= "a" && c <= "z") || (c >= "A" && c <= "Z");
     inline function isAlphaNum(c:String):Bool return isAlpha(c) || (c >= "0" && c <= "9");
-    inline function makeToken(def:TokenDef):Token { return new Token(def, currentPos()); }
-    inline function makeTokenAndAdvance(def:TokenDef):Token { var tok = makeToken(def); advance(); return tok; }
+
+    inline function makeToken(def:TokenDef):Token {
+        return new Token(def, currentPos());
+    }
+
+    inline function makeTokenAndAdvance(def:TokenDef):Token {
+        var tok = makeToken(def);
+        advance();
+        return tok;
+    }
 }
+
