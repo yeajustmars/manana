@@ -366,7 +366,11 @@ class Lexer {
             buf.add(c);
             advance();
         }
-        return new Token(TText(StringTools.trim(buf.toString())), pos);
+        var str = buf.toString();
+        if (!isEof() && (peekChar() == "^" || peekChar() == "@")) {
+            str = StringTools.rtrim(str);
+        }
+        return new Token(TText(str), pos);
     }
 
     function readIdentifierName():String {

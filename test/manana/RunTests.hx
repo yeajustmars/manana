@@ -13,6 +13,9 @@ class RunTests {
         var parserTests = new TestParser();
         parserTests.runAll();
 
+        var htmlCompilerTests = new TestHtmlCompiler();
+        htmlCompilerTests.runAll();
+
         Sys.println('\nResults: ${Assert.passedCount} passed, ${Assert.failedCount} failed.');
 
         if (Assert.failedCount > 0) {

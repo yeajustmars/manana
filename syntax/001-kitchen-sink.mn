@@ -62,7 +62,7 @@ div#content.conttainer.h-full
 
   p.row
     h2 Very nested syntax:
-    ul#some-id.a.b.c > li(*x 1) > a /link Link Text
+    ul#some-id.a.b.c > li(data-x=1) > a /link Link Text
 
   p.row
     h2 Variable interpolation

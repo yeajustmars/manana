@@ -208,7 +208,7 @@ class Parser {
 
         var children:Array<Expr> = [];
 
-        if (checkText() || checkInterpolation()) {
+        if (!isAtEnd() && !isLineBreakOrIndent(peek()) && !checkChain()) {
             children.push(parseTextStatement());
         }
 
@@ -218,17 +218,32 @@ class Parser {
     function parseTextStatement():Expr {
         var segments:Array<TextSegment> = [];
         var pos = peek().pos;
+        var textBuf = new StringBuf();
 
         while (!isAtEnd() && !isLineBreakOrIndent(peek()) && !checkChain()) {
-            var tok = advance();
+            var tok = peek();
             switch (tok.def) {
-                case TText(val):
-                    segments.push(TLiteral(val));
                 case TInterpolation(path):
+                    if (textBuf.length > 0) {
+                        segments.push(TLiteral(textBuf.toString()));
+                        textBuf = new StringBuf();
+                    }
                     segments.push(TInterpolation(path));
+                    advance();
+                case TText(val), TIdentifier(val):
+                    textBuf.add(val);
+                    advance();
                 default:
-                    break;
+                    var str = tokenToString(tok);
+                    if (str != "") {
+                        textBuf.add(str);
+                    }
+                    advance();
             }
+        }
+
+        if (textBuf.length > 0) {
+            segments.push(TLiteral(textBuf.toString()));
         }
 
         return new Expr(EText(segments), pos);
@@ -357,6 +372,13 @@ class Parser {
                 case TNewline: advance();
                 default: break;
             }
+        }
+    }
+
+    function tokenToString(tok:Token):String {
+        return switch (tok.def) {
+            case TText(s), TIdentifier(s), TString(s), TSlashPath(s), TId(s), TClass(s): s;
+            default: "";
         }
     }
 }
