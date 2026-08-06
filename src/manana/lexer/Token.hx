@@ -15,7 +15,8 @@ enum TokenDef {
     TChain;
     TDirective(name:String);
     TMetadata(name:String);
-    TInterpolation(path:Array<String>, raw:Bool);
+    TLBrace;
+    TRBrace;
     TCodeBlock(code:String);
     TIndent(spaces:Int);
     TDedent(spaces:Int);

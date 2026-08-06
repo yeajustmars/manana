@@ -82,19 +82,14 @@ class TestLexer {
     }
 
     function testInterpolationLexing():Void {
-        var code = "{user.first-name}";
+        var code = "{$ user.first-name}";
         var lexer = new Lexer(code);
         var tokens = lexer.tokenize();
 
-        switch (tokens[0].def) {
-            case TInterpolation(path, raw):
-                Assert.equals(2, path.length);
-                Assert.equals("user", path[0]);
-                Assert.equals("first-name", path[1]);
-                Assert.isFalse(raw);
-            default:
-                Assert.isTrue(false);
-        }
+        Assert.isTrue(matchToken(tokens[0], TLBrace));
+        Assert.isTrue(matchToken(tokens[1], TIdentifier("$")));
+        Assert.isTrue(matchToken(tokens[2], TIdentifier("user.first-name")));
+        Assert.isTrue(matchToken(tokens[3], TRBrace));
     }
 
     function testCodeBlockLexing():Void {

@@ -1,6 +1,7 @@
 package manana.parser;
 
 import manana.ast.Expr;
+
 import manana.ast.MananaError;
 import manana.ast.Position;
 import manana.lexer.Token;
@@ -18,32 +19,75 @@ class Parser {
         while (!isAtEnd()) {
             skipNewlines();
             if (isAtEnd()) break;
-            statements.push(parseStatement());
+            parseStatementsOnLine(statements);
         }
         return statements;
     }
 
-    function parseStatement():Expr {
+    function parseStatementsOnLine(out:Array<Expr>):Void {
         var tok = peek();
 
-        return switch (tok.def) {
+        switch (tok.def) {
             case TDirective(name):
                 if (name == "view") {
-                    parseViewDefinition();
+                    out.push(parseViewDefinition());
                 } else {
-                    parseViewCallOrDirective();
+                    out.push(parseViewCallOrDirective());
                 }
-            case TIdentifier(_), TId(_), TClass(_):
-                parseElementOrChain();
+            case TIdentifier(_), TId(_), TClass(_), TSlashPath(_):
+                out.push(parseElementOrChain());
+            case TLBrace:
+                out.push(parseCallStatement());
             case TCodeBlock(code):
                 advance();
-                new Expr(ECodeBlock(code, 0), tok.pos);
-            case TText(_), TInterpolation(_, _):
-                parseTextStatement();
-            case TSlashPath(_):
-                parseElementOrChain();
+                out.push(new Expr(ECodeBlock(code, 0), tok.pos));
             default:
-                throw new MananaError('Unexpected token ${tok.def}', tok.pos);
+                parseTextLineInto(out);
+        }
+    }
+
+    function parseCallStatement():Expr {
+        var pos = peek().pos;
+        var sexpr = parseSExpr();
+        var children = parseIndentedBlock();
+        return new Expr(ECall(sexpr, children), pos);
+    }
+
+    public function parseSExpr():SExpr {
+        var pos = peek().pos;
+        if (checkLBrace()) {
+            advance(); // consume {
+            if (checkRBrace()) {
+                advance();
+                return new SExpr(SCall("", []), pos);
+            }
+
+            var name = "";
+            var args:Array<SExpr> = [];
+
+            if (checkLBrace()) {
+                var nested = parseSExpr();
+                name = formatSExprName(nested);
+            } else {
+                var fnTok = advance();
+                name = tokenToString(fnTok);
+            }
+
+            while (!isAtEnd() && !checkRBrace()) {
+                if (checkLBrace()) {
+                    args.push(parseSExpr());
+                } else {
+                    var argTok = advance();
+                    args.push(new SExpr(SAtom(tokenToString(argTok)), argTok.pos));
+                }
+            }
+
+            if (checkRBrace()) advance(); // consume }
+
+            return new SExpr(SCall(name, args), pos);
+        } else {
+            var tok = advance();
+            return new SExpr(SAtom(tokenToString(tok)), pos);
         }
     }
 
@@ -110,7 +154,7 @@ class Parser {
         }
 
         var children = parseIndentedBlock();
-        return new Expr(EViewCall(name, flags), startTok.pos);
+        return new Expr(EView(name, flags, [], children), startTok.pos);
     }
 
     function parseElementOrChain():Expr {
@@ -214,45 +258,33 @@ class Parser {
 
         var children:Array<Expr> = [];
 
-        if (!isAtEnd() && !isLineBreakOrIndent(peek()) && !checkChain()) {
-            children.push(parseTextStatement());
+        while (!isAtEnd() && !isLineBreakOrIndent(peek()) && !checkChain()) {
+            if (checkLBrace()) {
+                var callPos = peek().pos;
+                var sexpr = parseSExpr();
+                children.push(new Expr(ECall(sexpr, []), callPos));
+            } else {
+                var txtTok = advance();
+                var txt = tokenToString(txtTok);
+                if (txt != "") children.push(new Expr(EText(txt), txtTok.pos));
+            }
         }
 
         return new Expr(EElement(tag, id, classes, attrs, children), pos);
     }
 
-    function parseTextStatement():Expr {
-        var segments:Array<TextSegment> = [];
-        var pos = peek().pos;
-        var textBuf = new StringBuf();
-
-        while (!isAtEnd() && !isLineBreakOrIndent(peek()) && !checkChain()) {
-            var tok = peek();
-            switch (tok.def) {
-                case TInterpolation(path, raw):
-                    if (textBuf.length > 0) {
-                        segments.push(TLiteral(textBuf.toString()));
-                        textBuf = new StringBuf();
-                    }
-                    segments.push(TInterpolation(path, raw));
-                    advance();
-                case TText(val), TIdentifier(val):
-                    textBuf.add(val);
-                    advance();
-                default:
-                    var str = tokenToString(tok);
-                    if (str != "") {
-                        textBuf.add(str);
-                    }
-                    advance();
+    function parseTextLineInto(out:Array<Expr>):Void {
+        while (!isAtEnd() && !isLineBreakOrIndent(peek())) {
+            if (checkLBrace()) {
+                var callPos = peek().pos;
+                var sexpr = parseSExpr();
+                out.push(new Expr(ECall(sexpr, []), callPos));
+            } else {
+                var tok = advance();
+                var txt = tokenToString(tok);
+                if (txt != "") out.push(new Expr(EText(txt), tok.pos));
             }
         }
-
-        if (textBuf.length > 0) {
-            segments.push(TLiteral(textBuf.toString()));
-        }
-
-        return new Expr(EText(segments), pos);
     }
 
     function parseIndentedBlock():Array<Expr> {
@@ -264,7 +296,7 @@ class Parser {
             while (!isAtEnd() && !checkDedent()) {
                 skipNewlines();
                 if (checkDedent()) break;
-                children.push(parseStatement());
+                parseStatementsOnLine(children);
             }
             if (checkDedent()) advance();
         }
@@ -288,6 +320,22 @@ class Parser {
         if (isAtEnd()) return false;
         return switch (peek().def) {
             case TChain: true;
+            default: false;
+        }
+    }
+
+    inline function checkLBrace():Bool {
+        if (isAtEnd()) return false;
+        return switch (peek().def) {
+            case TLBrace: true;
+            default: false;
+        }
+    }
+
+    inline function checkRBrace():Bool {
+        if (isAtEnd()) return false;
+        return switch (peek().def) {
+            case TRBrace: true;
             default: false;
         }
     }
@@ -369,6 +417,13 @@ class Parser {
         return switch (tok.def) {
             case TText(s), TIdentifier(s), TString(s), TSlashPath(s), TId(s), TClass(s): s;
             default: "";
+        }
+    }
+
+    function formatSExprName(sexpr:SExpr):String {
+        return switch (sexpr.def) {
+            case SAtom(s): s;
+            case SCall(n, _): n;
         }
     }
 }

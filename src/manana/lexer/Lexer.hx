@@ -38,6 +38,7 @@ class Lexer {
     var indentStack:Array<Int> = [0];
     var atLineStart:Bool = true;
     var inAttrMode:Bool = false;
+    var braceDepth:Int = 0;
 
     public function new(source:String, fileName:String = "main.mn") {
         this.source = source;
@@ -48,6 +49,29 @@ class Lexer {
         var tokens:Array<Token> = [];
 
         while (!isEof()) {
+            if (braceDepth > 0) {
+                skipWhitespaceInBraces();
+                if (isEof()) break;
+
+                var ch = peekChar();
+                if (ch == "{") {
+                    braceDepth++;
+                    tokens.push(makeTokenAndAdvance(TLBrace));
+                    continue;
+                }
+                if (ch == "}") {
+                    braceDepth--;
+                    tokens.push(makeTokenAndAdvance(TRBrace));
+                    continue;
+                }
+                if (ch == '"' || ch == "'") {
+                    tokens.push(lexString(ch));
+                    continue;
+                }
+                tokens.push(lexBraceSymbol());
+                continue;
+            }
+
             if (atLineStart) {
                 var indentChars = consumeIndentation();
 
@@ -157,7 +181,8 @@ class Lexer {
                 continue;
             }
             if (ch == "{") {
-                tokens.push(lexInterpolation());
+                braceDepth++;
+                tokens.push(makeTokenAndAdvance(TLBrace));
                 continue;
             }
 
@@ -171,7 +196,13 @@ class Lexer {
                 }
             }
 
-            tokens.push(lexTextUntilSpecial());
+            var txtTok = lexTextUntilSpecial();
+            switch (txtTok.def) {
+                case TText(s):
+                    if (s.length > 0) tokens.push(txtTok);
+                default:
+                    tokens.push(txtTok);
+            }
         }
 
         while (indentStack.length > 1) {
@@ -200,6 +231,16 @@ class Lexer {
             var c = peekChar();
             if (c == " " || c == "\t") advance();
             else break;
+        }
+    }
+
+    function skipWhitespaceInBraces():Void {
+        while (!isEof()) {
+            var c = peekChar();
+            if (c == " " || c == "\t" || c == "\r" || c == "\n") {
+                if (c == "\n") { line++; col = 1; }
+                advance();
+            } else break;
         }
     }
 
@@ -297,22 +338,16 @@ class Lexer {
         return new Token(TSlashPath(buf.toString()), pos);
     }
 
-    function lexInterpolation():Token {
+    function lexBraceSymbol():Token {
         var pos = currentPos();
-        advance(); // skip {
-        var raw = false;
-        if (peekChar() == "!") {
-            raw = true;
-            advance(); // skip !
-        }
         var buf = new StringBuf();
-        while (!isEof() && peekChar() != "}") {
-            buf.add(peekChar());
+        while (!isEof()) {
+            var c = peekChar();
+            if (isWhitespace(c) || c == "{" || c == "}" || c == '"' || c == "'") break;
+            buf.add(c);
             advance();
         }
-        if (peekChar() == "}") advance();
-        var path = buf.toString().split(".").map(StringTools.trim);
-        return new Token(TInterpolation(path, raw), pos);
+        return new Token(TIdentifier(buf.toString()), pos);
     }
 
     function lexString(quote:String):Token {
@@ -353,7 +388,7 @@ class Lexer {
         var buf = new StringBuf();
         while (!isEof()) {
             var c = peekChar();
-            if (c == "\n" || c == "\r" || c == "{" || c == "^" || c == "@") break;
+            if (c == "\n" || c == "\r" || c == "{" || c == "}" || c == "^" || c == "@") break;
             buf.add(c);
             advance();
         }
