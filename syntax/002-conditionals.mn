@@ -1,0 +1,21 @@
+@manana 0.1
+
+@view _main
+  #page.container
+    h1 User Info
+
+    {when-exists? users 0} // <- LISP-style functions, just with curly-braces
+      {with {get users 0} as u}
+        .row
+          h2 User 0
+          .col-2
+            .key First Name
+            .val {$ u.first-name}
+          .col-2
+            .key Last Name
+            .val {$ u.last-name}
+
+    ol {map-indexed idx user users}
+      li {$ idx} {$ user.first-name} {$ user.last-name} <{$ user.email}>
+      // Note: the "<" and ">" mean nothing above as we're in "text mode"
+
