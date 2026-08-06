@@ -59,14 +59,24 @@ class HtmlCompiler {
         registerFunction("when-exists?", handleIf);
         registerFunction("if", handleIf);
 
-        // Scope binding: {with val as varName}
+        // Scope binding: {with val :as varName} or {with val varName}
         registerFunction("with", function(args, children, compiler) {
-            if (args.length < 3) return "";
+            if (args.length < 2) return "";
             var val = compiler.evalSExpr(args[0]);
-            var varName = switch (args[2].def) {
-                case SAtom(v): v;
-                default: "";
-            };
+            var varName = "";
+
+            if (args.length >= 3) {
+                switch (args[1].def) {
+                    case SKeyword(k) if (k == "as"):
+                        varName = compiler.extractSymbolName(args[2]);
+                    case SSymbol(a) if (a == "as"):
+                        varName = compiler.extractSymbolName(args[2]);
+                    default:
+                        varName = compiler.extractSymbolName(args[1]);
+                }
+            } else {
+                varName = compiler.extractSymbolName(args[1]);
+            }
 
             var localScope = new Map<String, Dynamic>();
             localScope.set(varName, val);
@@ -82,8 +92,8 @@ class HtmlCompiler {
         // Indexed Map / Loop: {map-indexed idxVar itemVar listPath}
         registerFunction("map-indexed", function(args, children, compiler) {
             if (args.length < 3) return "";
-            var idxName = switch (args[0].def) { case SAtom(v): v; default: "idx"; };
-            var itemName = switch (args[1].def) { case SAtom(v): v; default: "item"; };
+            var idxName = compiler.extractSymbolName(args[0]);
+            var itemName = compiler.extractSymbolName(args[1]);
             var listVal = compiler.evalSExpr(args[2]);
 
             var items:Array<Dynamic> = compiler.toArray(listVal);
@@ -108,7 +118,7 @@ class HtmlCompiler {
         // Standard Loop: {map itemVar listPath} or {for itemVar listPath}
         var handleMap = function(args:Array<SExpr>, children:Array<Expr>, compiler:HtmlCompiler) {
             if (args.length < 2) return "";
-            var itemName = switch (args[0].def) { case SAtom(v): v; default: "item"; };
+            var itemName = compiler.extractSymbolName(args[0]);
             var listVal = compiler.evalSExpr(args[1]);
 
             var items:Array<Dynamic> = compiler.toArray(listVal);
@@ -136,8 +146,8 @@ class HtmlCompiler {
         registerFunction("get", function(args, children, compiler) {
             if (args.length < 2) return null;
             var target = compiler.evalSExpr(args[0]);
-            var key = compiler.evalSExpr(args[1]);
-            return compiler.getProperty(target, Std.string(key));
+            var keyOrIdx = compiler.evalSExpr(args[1]);
+            return compiler.getProperty(target, keyOrIdx);
         });
     }
 
@@ -190,6 +200,25 @@ class HtmlCompiler {
             case EView(_, _, _, _):
                 "";
 
+            case EViewCall(name, flags):
+                if (!views.exists(name)) return "";
+                var viewDef = views.get(name);
+
+                var localScope = new Map<String, Dynamic>();
+                for (i in 0...viewDef.args.length) {
+                    if (i < flags.length) {
+                        localScope.set(viewDef.args[i], flags[i]);
+                    }
+                }
+
+                scopeStack.push(localScope);
+                var buf = new StringBuf();
+                for (child in viewDef.children) {
+                    buf.add(compileExpr(child));
+                }
+                scopeStack.pop();
+                buf.toString();
+
             case ECall(sexpr, children):
                 execCall(sexpr, children);
         }
@@ -204,26 +233,39 @@ class HtmlCompiler {
                     var val = evalSExpr(sexpr);
                     val != null ? StringTools.htmlEscape(Std.string(val), true) : "";
                 }
-            case SAtom(path):
+            case SSymbol(path):
                 var val = resolvePath(path);
                 val != null ? StringTools.htmlEscape(Std.string(val), true) : "";
+            case SInt(_), SFloat(_), SBool(_), SString(_):
+                StringTools.htmlEscape(Std.string(evalSExpr(sexpr)), true);
+            case SKeyword(k):
+                ':$k';
         }
     }
 
     public function evalSExpr(sexpr:SExpr):Dynamic {
         return switch (sexpr.def) {
-            case SAtom(val):
-                if (isNumeric(val)) {
-                    Std.parseInt(val);
-                } else {
-                    resolvePath(val);
-                }
+            case SSymbol(val): resolvePath(val);
+            case SKeyword(val): ':$val';
+            case SString(val): val;
+            case SInt(val): val;
+            case SFloat(val): val;
+            case SBool(val): val;
             case SCall(fnName, args):
                 if (functions.exists(fnName)) {
                     functions.get(fnName)(args, [], this);
                 } else {
                     resolvePath(fnName);
                 }
+        }
+    }
+
+    public function extractSymbolName(sexpr:SExpr):String {
+        return switch (sexpr.def) {
+            case SSymbol(s): s;
+            case SKeyword(k): k;
+            case SString(s): s;
+            default: "";
         }
     }
 
@@ -257,16 +299,17 @@ class HtmlCompiler {
         return current;
     }
 
-    public function getProperty(target:Dynamic, prop:String):Dynamic {
+    public function getProperty(target:Dynamic, propOrIdx:Dynamic):Dynamic {
         if (target == null) return null;
 
-        if (isNumeric(prop) && (Std.isOfType(target, Array) || Std.isOfType(target, List))) {
-            var idx = Std.parseInt(prop);
+        if (Std.isOfType(propOrIdx, Int) && (Std.isOfType(target, Array) || Std.isOfType(target, List))) {
+            var idx:Int = cast propOrIdx;
             var arr:Array<Dynamic> = toArray(target);
             if (idx >= 0 && idx < arr.length) return arr[idx];
             return null;
         }
 
+        var prop = Std.string(propOrIdx);
         if (Std.isOfType(target, haxe.Constraints.IMap)) {
             var map:haxe.Constraints.IMap<Dynamic, Dynamic> = cast target;
             return map.get(prop);
@@ -306,14 +349,5 @@ class HtmlCompiler {
         }
 
         return [val];
-    }
-
-    function isNumeric(s:String):Bool {
-        if (s == null || s.length == 0) return false;
-        for (i in 0...s.length) {
-            var c = s.charCodeAt(i);
-            if (c < "0".charCodeAt(0) || c > "9".charCodeAt(0)) return false;
-        }
-        return true;
     }
 }

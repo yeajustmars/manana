@@ -68,7 +68,15 @@ class Lexer {
                     tokens.push(lexString(ch));
                     continue;
                 }
-                tokens.push(lexBraceSymbol());
+                if (ch == ":") {
+                    tokens.push(lexKeyword());
+                    continue;
+                }
+                if (isDigit(ch) || (ch == "-" && isDigit(peekNextChar()))) {
+                    tokens.push(lexNumber());
+                    continue;
+                }
+                tokens.push(lexBraceSymbolOrBool());
                 continue;
             }
 
@@ -338,7 +346,45 @@ class Lexer {
         return new Token(TSlashPath(buf.toString()), pos);
     }
 
-    function lexBraceSymbol():Token {
+    function lexKeyword():Token {
+        var pos = currentPos();
+        advance(); // Skip ':'
+        var buf = new StringBuf();
+        while (!isEof()) {
+            var c = peekChar();
+            if (isWhitespace(c) || c == "{" || c == "}" || c == '"' || c == "'") break;
+            buf.add(c);
+            advance();
+        }
+        return new Token(TKeyword(buf.toString()), pos);
+    }
+
+    function lexNumber():Token {
+        var pos = currentPos();
+        var buf = new StringBuf();
+        if (peekChar() == "-") {
+            buf.add("-");
+            advance();
+        }
+        var isFloat = false;
+        while (!isEof()) {
+            var c = peekChar();
+            if (isDigit(c)) {
+                buf.add(c);
+                advance();
+            } else if (c == "." && !isFloat && isDigit(peekNextChar())) {
+                isFloat = true;
+                buf.add(".");
+                advance();
+            } else {
+                break;
+            }
+        }
+        var numStr = buf.toString();
+        return isFloat ? new Token(TFloat(Std.parseFloat(numStr)), pos) : new Token(TInt(Std.parseInt(numStr)), pos);
+    }
+
+    function lexBraceSymbolOrBool():Token {
         var pos = currentPos();
         var buf = new StringBuf();
         while (!isEof()) {
@@ -347,7 +393,10 @@ class Lexer {
             buf.add(c);
             advance();
         }
-        return new Token(TIdentifier(buf.toString()), pos);
+        var str = buf.toString();
+        if (str == "true") return new Token(TBool(true), pos);
+        if (str == "false") return new Token(TBool(false), pos);
+        return new Token(TSymbol(str), pos);
     }
 
     function lexString(quote:String):Token {
@@ -439,14 +488,16 @@ class Lexer {
     }
 
     inline function peekChar():String return cursor < source.length ? source.charAt(cursor) : "";
+    inline function peekNextChar():String return cursor + 1 < source.length ? source.charAt(cursor + 1) : "";
     inline function advance():Void { cursor++; col++; }
     inline function advanceBy(n:Int):Void { cursor += n; col += n; }
     inline function isEof():Bool return cursor >= source.length;
     inline function startsWith(sub:String):Bool return source.substr(cursor, sub.length) == sub;
     inline function currentPos():Position return new Position(fileName, line, col);
     inline function isWhitespace(c:String):Bool return c == " " || c == "\t" || c == "\n" || c == "\r";
+    inline function isDigit(c:String):Bool return c >= "0" && c <= "9";
     inline function isAlpha(c:String):Bool return (c >= "a" && c <= "z") || (c >= "A" && c <= "Z");
-    inline function isAlphaNum(c:String):Bool return isAlpha(c) || (c >= "0" && c <= "9");
+    inline function isAlphaNum(c:String):Bool return isAlpha(c) || isDigit(c);
 
     inline function makeToken(def:TokenDef):Token {
         return new Token(def, currentPos());

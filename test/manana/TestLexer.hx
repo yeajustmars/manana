@@ -87,8 +87,8 @@ class TestLexer {
         var tokens = lexer.tokenize();
 
         Assert.isTrue(matchToken(tokens[0], TLBrace));
-        Assert.isTrue(matchToken(tokens[1], TIdentifier("$")));
-        Assert.isTrue(matchToken(tokens[2], TIdentifier("user.first-name")));
+        Assert.isTrue(matchToken(tokens[1], TSymbol("$")));
+        Assert.isTrue(matchToken(tokens[2], TSymbol("user.first-name")));
         Assert.isTrue(matchToken(tokens[3], TRBrace));
     }
 

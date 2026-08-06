@@ -1,7 +1,12 @@
 package manana.ast;
 
 enum SExprDef {
-    SAtom(value:String);
+    SSymbol(name:String);
+    SKeyword(name:String);
+    SString(value:String);
+    SInt(value:Int);
+    SFloat(value:Float);
+    SBool(value:Bool);
     SCall(name:String, args:Array<SExpr>);
 }
 
@@ -20,6 +25,7 @@ enum ExprDef {
     EText(text:String);
     ECodeBlock(code:String, indent:Int);
     EView(name:String, args:Array<String>, meta:Array<Metadata>, children:Array<Expr>);
+    EViewCall(name:String, flags:Array<String>);
     ECall(sexpr:SExpr, children:Array<Expr>);
 }
 

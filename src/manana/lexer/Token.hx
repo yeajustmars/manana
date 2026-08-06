@@ -4,6 +4,11 @@ import manana.ast.Position;
 
 enum TokenDef {
     TIdentifier(name:String);
+    TSymbol(name:String);
+    TKeyword(name:String);
+    TInt(value:Int);
+    TFloat(value:Float);
+    TBool(value:Bool);
     TId(id:String);
     TClass(name:String);
     TText(text:String);

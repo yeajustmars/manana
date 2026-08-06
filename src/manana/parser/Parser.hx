@@ -1,7 +1,6 @@
 package manana.parser;
 
 import manana.ast.Expr;
-
 import manana.ast.MananaError;
 import manana.ast.Position;
 import manana.lexer.Token;
@@ -62,15 +61,15 @@ class Parser {
                 return new SExpr(SCall("", []), pos);
             }
 
-            var name = "";
+            var fnName = "";
             var args:Array<SExpr> = [];
 
             if (checkLBrace()) {
                 var nested = parseSExpr();
-                name = formatSExprName(nested);
+                fnName = formatSExprName(nested);
             } else {
                 var fnTok = advance();
-                name = tokenToString(fnTok);
+                fnName = tokenToSymbolOrName(fnTok);
             }
 
             while (!isAtEnd() && !checkRBrace()) {
@@ -78,16 +77,28 @@ class Parser {
                     args.push(parseSExpr());
                 } else {
                     var argTok = advance();
-                    args.push(new SExpr(SAtom(tokenToString(argTok)), argTok.pos));
+                    args.push(tokenToSExpr(argTok));
                 }
             }
 
             if (checkRBrace()) advance(); // consume }
 
-            return new SExpr(SCall(name, args), pos);
+            return new SExpr(SCall(fnName, args), pos);
         } else {
             var tok = advance();
-            return new SExpr(SAtom(tokenToString(tok)), pos);
+            return tokenToSExpr(tok);
+        }
+    }
+
+    function tokenToSExpr(tok:Token):SExpr {
+        return switch (tok.def) {
+            case TSymbol(s), TIdentifier(s): new SExpr(SSymbol(s), tok.pos);
+            case TKeyword(k): new SExpr(SKeyword(k), tok.pos);
+            case TString(s): new SExpr(SString(s), tok.pos);
+            case TInt(i): new SExpr(SInt(i), tok.pos);
+            case TFloat(f): new SExpr(SFloat(f), tok.pos);
+            case TBool(b): new SExpr(SBool(b), tok.pos);
+            default: new SExpr(SSymbol(tokenToString(tok)), tok.pos);
         }
     }
 
@@ -112,7 +123,7 @@ class Parser {
                     } else {
                         for (p in parts) args.push(p);
                     }
-                case TIdentifier(argName):
+                case TIdentifier(argName), TSymbol(argName):
                     advance();
                     if (viewName == "") viewName = argName;
                     else args.push(argName);
@@ -143,7 +154,7 @@ class Parser {
                     advance();
                     var parts = val.split(" ").map(StringTools.trim).filter(function(s) return s.length > 0);
                     for (p in parts) flags.push(p);
-                case TIdentifier(argName), TString(argName), TSlashPath(argName):
+                case TIdentifier(argName), TSymbol(argName), TString(argName), TSlashPath(argName):
                     flags.push(argName);
                     advance();
                 default:
@@ -154,7 +165,7 @@ class Parser {
         }
 
         var children = parseIndentedBlock();
-        return new Expr(EView(name, flags, [], children), startTok.pos);
+        return new Expr(EViewCall(name, flags), startTok.pos);
     }
 
     function parseElementOrChain():Expr {
@@ -205,7 +216,7 @@ class Parser {
         if (matchIdentifier()) {
             var tok = advance();
             switch (tok.def) {
-                case TIdentifier(t): tag = t;
+                case TIdentifier(t), TSymbol(t): tag = t;
                 default:
             }
         }
@@ -229,16 +240,13 @@ class Parser {
             while (!isAtEnd() && !checkAttrClose()) {
                 if (matchIdentifier()) {
                     var k = advance();
-                    var keyStr = switch (k.def) { case TIdentifier(s): s; default: ""; };
+                    var keyStr = tokenToString(k);
                     var valStr = "true";
 
                     if (checkEquals()) {
                         advance();
                         var v = advance();
-                        valStr = switch (v.def) {
-                            case TString(s), TIdentifier(s), TSlashPath(s): s;
-                            default: "";
-                        };
+                        valStr = tokenToString(v);
                     }
                     attrs.set(keyStr, valStr);
                 } else {
@@ -383,7 +391,7 @@ class Parser {
     inline function matchIdentifier():Bool {
         if (isAtEnd()) return false;
         return switch (peek().def) {
-            case TIdentifier(_): true;
+            case TIdentifier(_), TSymbol(_): true;
             default: false;
         }
     }
@@ -415,15 +423,26 @@ class Parser {
 
     function tokenToString(tok:Token):String {
         return switch (tok.def) {
-            case TText(s), TIdentifier(s), TString(s), TSlashPath(s), TId(s), TClass(s): s;
+            case TText(s), TIdentifier(s), TSymbol(s), TKeyword(s), TString(s), TSlashPath(s), TId(s), TClass(s): s;
+            case TInt(i): Std.string(i);
+            case TFloat(f): Std.string(f);
+            case TBool(b): Std.string(b);
             default: "";
+        }
+    }
+
+    function tokenToSymbolOrName(tok:Token):String {
+        return switch (tok.def) {
+            case TSymbol(s), TIdentifier(s): s;
+            default: tokenToString(tok);
         }
     }
 
     function formatSExprName(sexpr:SExpr):String {
         return switch (sexpr.def) {
-            case SAtom(s): s;
+            case SSymbol(s): s;
             case SCall(n, _): n;
+            default: "";
         }
     }
 }
