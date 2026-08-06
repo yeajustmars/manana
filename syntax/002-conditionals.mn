@@ -5,7 +5,7 @@
     h1 User Info
 
     {when-exists? users 0} // <- LISP-style functions, just with curly-braces
-      {with {get users 0} as u}
+      {with {get users 0} :as u}
         .row
           h2 User 0
           .col-2
