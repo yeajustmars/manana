@@ -31,7 +31,6 @@ class Parser {
                 if (name == "view") {
                     parseViewDefinition();
                 } else {
-                    // General directive or view call shorthand
                     parseViewCallOrDirective();
                 }
             case TIdentifier(_), TId(_), TClass(_):
@@ -39,10 +38,9 @@ class Parser {
             case TCodeBlock(code):
                 advance();
                 new Expr(ECodeBlock(code, 0), tok.pos);
-            case TText(_), TInterpolation(_):
+            case TText(_), TInterpolation(_, _):
                 parseTextStatement();
             case TSlashPath(_):
-                // Standalone link sugar fallback starting with implicit a tag
                 parseElementOrChain();
             default:
                 throw new MananaError('Unexpected token ${tok.def}', tok.pos);
@@ -50,7 +48,7 @@ class Parser {
     }
 
     function parseViewDefinition():Expr {
-        var startTok = advance(); // consume @view
+        var startTok = advance();
         var viewName = "";
         var args:Array<String> = [];
         var meta:Array<Metadata> = [];
@@ -84,7 +82,7 @@ class Parser {
     }
 
     function parseViewCallOrDirective():Expr {
-        var startTok = advance(); // consume @directive
+        var startTok = advance();
         var name = switch (startTok.def) {
             case TDirective(n): n;
             default: "";
@@ -120,7 +118,7 @@ class Parser {
         var currentTerminal = rootElement;
 
         while (checkChain()) {
-            advance(); // consume >
+            advance();
 
             switch (currentTerminal.def) {
                 case EText(_):
@@ -183,7 +181,7 @@ class Parser {
         }
 
         if (checkAttrOpen()) {
-            advance(); // consume (
+            advance();
             while (!isAtEnd() && !checkAttrClose()) {
                 if (matchIdentifier()) {
                     var k = advance();
@@ -191,7 +189,7 @@ class Parser {
                     var valStr = "true";
 
                     if (checkEquals()) {
-                        advance(); // consume =
+                        advance();
                         var v = advance();
                         valStr = switch (v.def) {
                             case TString(s), TIdentifier(s), TSlashPath(s): s;
@@ -231,12 +229,12 @@ class Parser {
         while (!isAtEnd() && !isLineBreakOrIndent(peek()) && !checkChain()) {
             var tok = peek();
             switch (tok.def) {
-                case TInterpolation(path):
+                case TInterpolation(path, raw):
                     if (textBuf.length > 0) {
                         segments.push(TLiteral(textBuf.toString()));
                         textBuf = new StringBuf();
                     }
-                    segments.push(TInterpolation(path));
+                    segments.push(TInterpolation(path, raw));
                     advance();
                 case TText(val), TIdentifier(val):
                     textBuf.add(val);
@@ -262,13 +260,13 @@ class Parser {
         skipNewlines();
 
         if (checkIndent()) {
-            advance(); // consume TIndent
+            advance();
             while (!isAtEnd() && !checkDedent()) {
                 skipNewlines();
                 if (checkDedent()) break;
                 children.push(parseStatement());
             }
-            if (checkDedent()) advance(); // consume TDedent
+            if (checkDedent()) advance();
         }
 
         return children;
@@ -346,22 +344,6 @@ class Parser {
         if (isAtEnd()) return false;
         return switch (peek().def) {
             case TSlashPath(_): true;
-            default: false;
-        }
-    }
-
-    inline function checkText():Bool {
-        if (isAtEnd()) return false;
-        return switch (peek().def) {
-            case TText(_): true;
-            default: false;
-        }
-    }
-
-    inline function checkInterpolation():Bool {
-        if (isAtEnd()) return false;
-        return switch (peek().def) {
-            case TInterpolation(_): true;
             default: false;
         }
     }

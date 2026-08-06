@@ -22,7 +22,6 @@ class HtmlCompiler {
     }
 
     public function compile(ast:Array<Expr>):String {
-        // First pass: Register all view definitions
         for (expr in ast) {
             switch (expr.def) {
                 case EView(name, args, _, children):
@@ -31,7 +30,6 @@ class HtmlCompiler {
             }
         }
 
-        // Second pass: Render output nodes
         var buf = new StringBuf();
         for (expr in ast) {
             buf.add(compileExpr(expr));
@@ -79,8 +77,9 @@ class HtmlCompiler {
                     switch (seg) {
                         case TLiteral(text):
                             buf.add(text);
-                        case TInterpolation(path):
-                            buf.add(resolveContextPath(path));
+                        case TInterpolation(path, raw):
+                            var val = resolveContextPath(path);
+                            buf.add(raw ? val : StringTools.htmlEscape(val, true));
                     }
                 }
                 buf.toString();
@@ -88,8 +87,8 @@ class HtmlCompiler {
             case ECodeBlock(code, _):
                 code;
 
-            case EView(name, args, _, children):
-                ""; // Declarations produce no direct output
+            case EView(_, _, _, _):
+                "";
 
             case EViewCall(name, flags):
                 if (!views.exists(name)) return "";
@@ -116,15 +115,41 @@ class HtmlCompiler {
         if (path.length == 0) return "";
         var key = path[0];
 
+        var rootVal:Dynamic = null;
+        var found = false;
+
         var i = scopeStack.length - 1;
         while (i >= 0) {
             var scope = scopeStack[i];
             if (scope.exists(key)) {
-                return Std.string(scope.get(key));
+                rootVal = scope.get(key);
+                found = true;
+                break;
             }
             i--;
         }
 
-        return "";
+        if (!found || rootVal == null) return "";
+
+        var current:Dynamic = rootVal;
+        for (p in 1...path.length) {
+            if (current == null) return "";
+            var prop = path[p];
+
+            if (Std.isOfType(current, haxe.Constraints.IMap)) {
+                var map:haxe.Constraints.IMap<Dynamic, Dynamic> = cast current;
+                current = map.get(prop);
+            } else if (Reflect.isObject(current)) {
+                if (Reflect.hasField(current, prop)) {
+                    current = Reflect.field(current, prop);
+                } else {
+                    current = Reflect.getProperty(current, prop);
+                }
+            } else {
+                return "";
+            }
+        }
+
+        return current != null ? Std.string(current) : "";
     }
 }

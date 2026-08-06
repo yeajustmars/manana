@@ -87,10 +87,11 @@ class TestLexer {
         var tokens = lexer.tokenize();
 
         switch (tokens[0].def) {
-            case TInterpolation(path):
+            case TInterpolation(path, raw):
                 Assert.equals(2, path.length);
                 Assert.equals("user", path[0]);
                 Assert.equals("first-name", path[1]);
+                Assert.isFalse(raw);
             default:
                 Assert.isTrue(false);
         }

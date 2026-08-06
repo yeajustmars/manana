@@ -51,7 +51,6 @@ class Lexer {
             if (atLineStart) {
                 var indentChars = consumeIndentation();
 
-                // Skip empty lines or comment-only lines without modifying indent state
                 if (peekChar() == "\n" || peekChar() == "\r" || startsWith('"""')) {
                     if (peekChar() == "\r") advance();
                     if (peekChar() == "\n") { advance(); line++; col = 1; }
@@ -84,19 +83,16 @@ class Lexer {
 
             var ch = peekChar();
 
-            // Block comments
             if (startsWith('"""')) {
                 skipBlockComment();
                 continue;
             }
 
-            // Code blocks
             if (startsWith("```")) {
                 tokens.push(lexCodeBlock());
                 continue;
             }
 
-            // Line breaks
             if (ch == "\n" || ch == "\r") {
                 if (ch == "\r") advance();
                 advance();
@@ -107,14 +103,12 @@ class Lexer {
                 continue;
             }
 
-            // Escaped leading line text
             if (ch == "\\") {
                 advance();
                 tokens.push(lexRestOfLineAsText());
                 continue;
             }
 
-            // Mode: Attribute Map Parsing
             if (inAttrMode) {
                 if (ch == ")") {
                     inAttrMode = false;
@@ -133,7 +127,6 @@ class Lexer {
                 continue;
             }
 
-            // Standard Parse Mode
             if (ch == "(") {
                 inAttrMode = true;
                 tokens.push(makeTokenAndAdvance(TAttrOpen));
@@ -168,7 +161,6 @@ class Lexer {
                 continue;
             }
 
-            // Tag vs Plain Text determination
             if (isAlpha(ch)) {
                 var word = peekWord();
                 if (HTML_TAGS.exists(word.toLowerCase())) {
@@ -179,11 +171,9 @@ class Lexer {
                 }
             }
 
-            // Fallback: raw text until special token delimiter
             tokens.push(lexTextUntilSpecial());
         }
 
-        // Emit final dedents at EOF
         while (indentStack.length > 1) {
             indentStack.pop();
             tokens.push(makeToken(TDedent(indentStack[indentStack.length - 1])));
@@ -214,7 +204,7 @@ class Lexer {
     }
 
     function skipBlockComment():Void {
-        advanceBy(3); // skip opening """
+        advanceBy(3);
         while (!isEof() && !startsWith('"""')) {
             if (peekChar() == "\n") { line++; col = 1; }
             advance();
@@ -224,9 +214,8 @@ class Lexer {
 
     function lexCodeBlock():Token {
         var pos = currentPos();
-        advanceBy(3); // skip opening ```
+        advanceBy(3);
 
-        // read through newline
         while (!isEof() && peekChar() != "\n") advance();
         if (peekChar() == "\n") { advance(); line++; col = 1; }
 
@@ -234,7 +223,6 @@ class Lexer {
         var baseIndent = -1;
 
         while (!isEof() && !startsWith("```")) {
-            var lineStartPos = cursor;
             var currentLineIndent = 0;
 
             while (!isEof() && (peekChar() == " " || peekChar() == "\t")) {
@@ -253,8 +241,6 @@ class Lexer {
 
             if (baseIndent == -1) baseIndent = currentLineIndent;
 
-            var stripChars = (currentLineIndent > baseIndent) ? currentLineIndent - baseIndent : 0;
-            // Append trimmed line content
             while (!isEof() && peekChar() != "\n" && peekChar() != "\r") {
                 rawBuffer.add(peekChar());
                 advance();
@@ -272,7 +258,7 @@ class Lexer {
 
     function lexDirective():Token {
         var pos = currentPos();
-        advance(); // skip @
+        advance();
         var name = readIdentifierName();
         return new Token(TDirective(name), pos);
     }
@@ -289,19 +275,19 @@ class Lexer {
 
     function lexId():Token {
         var pos = currentPos();
-        advance(); // skip #
+        advance();
         return new Token(TId(readIdentifierName()), pos);
     }
 
     function lexClass():Token {
         var pos = currentPos();
-        advance(); // skip .
+        advance();
         return new Token(TClass(readIdentifierName()), pos);
     }
 
     function lexSlashPath():Token {
         var pos = currentPos();
-        advance(); // skip /
+        advance();
         var buf = new StringBuf();
         buf.add("/");
         while (!isEof() && !isWhitespace(peekChar()) && peekChar() != "\n") {
@@ -314,6 +300,11 @@ class Lexer {
     function lexInterpolation():Token {
         var pos = currentPos();
         advance(); // skip {
+        var raw = false;
+        if (peekChar() == "!") {
+            raw = true;
+            advance(); // skip !
+        }
         var buf = new StringBuf();
         while (!isEof() && peekChar() != "}") {
             buf.add(peekChar());
@@ -321,12 +312,12 @@ class Lexer {
         }
         if (peekChar() == "}") advance();
         var path = buf.toString().split(".").map(StringTools.trim);
-        return new Token(TInterpolation(path), pos);
+        return new Token(TInterpolation(path, raw), pos);
     }
 
     function lexString(quote:String):Token {
         var pos = currentPos();
-        advance(); // skip quote
+        advance();
         var buf = new StringBuf();
         while (!isEof() && peekChar() != quote) {
             if (peekChar() == "\\") advance();
@@ -368,9 +359,19 @@ class Lexer {
         }
         var str = buf.toString();
         if (!isEof() && (peekChar() == "^" || peekChar() == "@")) {
-            str = StringTools.rtrim(str);
+            str = rtrim(str);
         }
         return new Token(TText(str), pos);
+    }
+
+    function rtrim(s:String):String {
+        var len = s.length;
+        while (len > 0) {
+            var c = s.charAt(len - 1);
+            if (c == " " || c == "\t" || c == "\r" || c == "\n") len--;
+            else break;
+        }
+        return s.substr(0, len);
     }
 
     function readIdentifierName():String {
@@ -422,4 +423,3 @@ class Lexer {
         return tok;
     }
 }
-
