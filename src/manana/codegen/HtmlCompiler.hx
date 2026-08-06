@@ -2,6 +2,11 @@ package manana.codegen;
 
 import manana.ast.Expr;
 
+typedef ViewDef = {
+    args:Array<String>,
+    children:Array<Expr>
+}
+
 class HtmlCompiler {
     static final VOID_TAGS:Map<String, Bool> = [
         "area" => true, "base" => true, "br" => true, "col" => true, "embed" => true,
@@ -9,13 +14,24 @@ class HtmlCompiler {
         "param" => true, "source" => true, "track" => true, "wbr" => true
     ];
 
-    var context:Map<String, Dynamic>;
+    var scopeStack:Array<Map<String, Dynamic>>;
+    var views:Map<String, ViewDef> = new Map();
 
     public function new(context:Null<Map<String, Dynamic>> = null) {
-        this.context = context != null ? context : new Map();
+        this.scopeStack = [context != null ? context : new Map()];
     }
 
     public function compile(ast:Array<Expr>):String {
+        // First pass: Register all view definitions
+        for (expr in ast) {
+            switch (expr.def) {
+                case EView(name, args, _, children):
+                    views.set(name, { args: args, children: children });
+                default:
+            }
+        }
+
+        // Second pass: Render output nodes
         var buf = new StringBuf();
         for (expr in ast) {
             buf.add(compileExpr(expr));
@@ -72,18 +88,43 @@ class HtmlCompiler {
             case ECodeBlock(code, _):
                 code;
 
-            case EView(_, _, _, children):
-                compile(children);
+            case EView(name, args, _, children):
+                ""; // Declarations produce no direct output
 
-            case EViewCall(_, _):
-                "";
+            case EViewCall(name, flags):
+                if (!views.exists(name)) return "";
+                var viewDef = views.get(name);
+
+                var localScope = new Map<String, Dynamic>();
+                for (i in 0...viewDef.args.length) {
+                    if (i < flags.length) {
+                        localScope.set(viewDef.args[i], flags[i]);
+                    }
+                }
+
+                scopeStack.push(localScope);
+                var buf = new StringBuf();
+                for (child in viewDef.children) {
+                    buf.add(compileExpr(child));
+                }
+                scopeStack.pop();
+                buf.toString();
         }
     }
 
     function resolveContextPath(path:Array<String>):String {
         if (path.length == 0) return "";
-        var val:Dynamic = context.get(path[0]);
-        if (val == null) return "";
-        return Std.string(val);
+        var key = path[0];
+
+        var i = scopeStack.length - 1;
+        while (i >= 0) {
+            var scope = scopeStack[i];
+            if (scope.exists(key)) {
+                return Std.string(scope.get(key));
+            }
+            i--;
+        }
+
+        return "";
     }
 }

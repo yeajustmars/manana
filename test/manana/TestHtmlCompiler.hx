@@ -12,6 +12,7 @@ class TestHtmlCompiler {
         testSimpleElementRendering();
         testVoidTagRendering();
         testContextInterpolation();
+        testViewComposition();
     }
 
     function testSimpleElementRendering():Void {
@@ -43,5 +44,15 @@ class TestHtmlCompiler {
         var html = compiler.compile(parser.parse());
 
         Assert.equals('<p>Hello Alice!</p>', html);
+    }
+
+    function testViewComposition():Void {
+        var code = "@view user-card name\n  div.card\n    p {name}\n\n@user-card Alice";
+        var lexer = new Lexer(code);
+        var parser = new Parser(lexer.tokenize());
+        var compiler = new HtmlCompiler();
+        var html = compiler.compile(parser.parse());
+
+        Assert.equals('<div class="card"><p>Alice</p></div>', html);
     }
 }

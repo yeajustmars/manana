@@ -84,7 +84,7 @@ class Parser {
     }
 
     function parseViewCallOrDirective():Expr {
-        var startTok = advance(); // consume @
+        var startTok = advance(); // consume @directive
         var name = switch (startTok.def) {
             case TDirective(n): n;
             default: "";
@@ -97,13 +97,21 @@ class Parser {
                 case TMetadata(m):
                     flags.push(m);
                     advance();
+                case TText(val):
+                    advance();
+                    var parts = val.split(" ").map(StringTools.trim).filter(function(s) return s.length > 0);
+                    for (p in parts) flags.push(p);
+                case TIdentifier(argName), TString(argName), TSlashPath(argName):
+                    flags.push(argName);
+                    advance();
                 default:
+                    var str = tokenToString(t);
+                    if (str != "") flags.push(str);
                     advance();
             }
         }
 
         var children = parseIndentedBlock();
-        // If it has children, treat as inline element; otherwise view call
         return new Expr(EViewCall(name, flags), startTok.pos);
     }
 
